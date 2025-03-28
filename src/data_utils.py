@@ -20,7 +20,7 @@ np.random.seed(2)
 
 class Data:
 
-    def __init__(self,  input_data,  deep, gait_cycle, step=50, features=np.arange(1, 19), pk_level = True):
+    def __init__(self,  input_data,  deep, gait_cycle, step=100, features=np.arange(1, 19), pk_level = True):
         '''
 
         :param load_or_get:  1: load data , 0: load preloaded datas ( npy)
@@ -79,11 +79,24 @@ class Data:
         :param total_fold: Total number of fols
         :return:
         '''
+        # print("y_ctrl:", self.y_ctrl)
+        # print("y_park:", self.y_park)
+
         proportion = 1 / total_fold  # .10 for 10 folds
         X = [self.X_ctrl, self.X_park]
         y = [self.y_ctrl, self.y_park]
+     
         patients = [self.nb_data_per_person[:self.last_ctrl_patient], self.nb_data_per_person[self.last_ctrl_patient:]] # counts separated by classe
-        patients[1]= patients[1] - patients[1][0]
+        # patients[1]= patients[1] - patients[1][0]
+        print('DATA:')
+        print(f"Total patients: {len(self.nb_data_per_person)}")
+        print(f"self.last_ctrl_patient: {self.last_ctrl_patient}")
+        print(f"patients: {patients}")
+        print(patients)
+        if len(patients[1]) > 0:
+            patients[1] = patients[1] - patients[1][0]
+        else:
+            print("⚠️ Warning: patients[1] is empty!")
         diff_count = np.diff(self.nb_data_per_person)
         diff_count = [diff_count[:self.last_ctrl_patient], diff_count[self.last_ctrl_patient:]]
         self.count_val = np.array([0])
@@ -125,21 +138,26 @@ class Data:
 
     def load(self, norm = 'std'):
         print("load training control ")
+        print(f"Before adding Parkinson: X_data shape: {self.X_data.shape}, y_data shape: {self.y_data.shape}")
+        print(f"ctrl_list length: {len(self.ctrl_list)}, pk_list length: {len(self.pk_list)}")
+
         self.load_data(self.ctrl_list, 0)
         if self.deep == 1:
             self.last_ctrl= self.X_data.shape[2]
             self.last_ctrl_patient = len(self.nb_data_per_person)
         print("load training parkinson ")
+        print(f"Before adding Parkinson: X_data shape: {self.X_data.shape}, y_data shape: {self.y_data.shape}")
 
 
         self.load_data(self.pk_list, 1)  # ncycle, nfeature, nombre de data
 
+        print(f"Before adding Parkinson: X_data shape: {self.X_data.shape}, y_data shape: {self.y_data.shape}")
 
         ## all datas are loaded at this point, preprocessing now
         if self.deep == 1:
             self.X_data = self.X_data.transpose(2,0 , 1)  #0, 1
 
-            if norm == 'std ':
+            if norm == 'std':
                 self.normalize()
             elif norm == 'l2':
                 self.X_data = self.normalize_l2(self.X_data)
@@ -149,11 +167,18 @@ class Data:
 
         if self.deep == 1:
             self.X_ctrl = self.X_data[:self.last_ctrl]
-            self.y_ctrl =  self.y_data[:self.last_ctrl]
+            self.y_ctrl = self.y_data[:self.last_ctrl]
             self.X_park = self.X_data[self.last_ctrl:]
             self.y_park = self.y_data[self.last_ctrl:]
+   
+        print(f"self.last_ctrl: {self.last_ctrl}, X_data shape: {self.X_data.shape}, y_data shape: {self.y_data.shape}")
+
 
         print("saving training ")
+        print(self.X_park.shape)
+        print(self.X_ctrl.shape)
+        print('S',self.y_park.shape)
+        print('Y',self.y_ctrl.shape)
         np.save("Xdata", self.X_data)
         np.save("ydata", self.y_data)
         np.save('data_person',self.nb_data_per_person)
@@ -216,9 +241,11 @@ class Data:
                 self.y_data = y_data
             else:
                 if self.deep == 1:
-                    self.X_data = np.dstack((self.X_data, X_data))
+                    # self.X_data = np.dstack((self.X_data, X_data))
+                    self.X_data = np.dstack((self.X_data.astype(np.float16), X_data.astype(np.float16)))
+
                 else:
-                    self.X_data = np.vstack((self.X_data, X_data))  # shape nb data --- vector size
+                    self.X_data = np.vstack((self.X_data.astype(np.float16), X_data.astype(np.float16)))  # shape nb data --- vector size
                 self.y_data = np.vstack((self.y_data, y_data))
 
             print(X_data.shape, self.X_data.shape)
