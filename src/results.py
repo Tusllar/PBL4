@@ -4,7 +4,7 @@ from sklearn.metrics import confusion_matrix,  classification_report, accuracy_s
 from scipy import stats
 import pandas as pd
 class Results:
-    def __init__(self, filename_seg, filename_patient):
+    def __init__(self, filename_seg, filename_patient,dir):
         '''
 
         :param filename_seg:  Filename  (.csv) where to save results at the segment levels
@@ -14,6 +14,10 @@ class Results:
         self.results_segments = np.zeros(3)
         self.filename_seg = filename_seg
         self.filename_patient = filename_patient
+        self.filename_patient = filename_patient
+        self.gt = np.array([])
+        self.pred = np.array([])
+        self.dir = dir
     def add_result( self,res, accuracy,  segments = True  ):
         '''
 
@@ -59,13 +63,14 @@ class Results:
             j = count[m - 1]
             score = model.evaluate(np.split(x_val[j:i, :, :], x_val.shape[2], axis=2), y_val[j:i])
             eval.append(score)
-            y.append(np.int(np.mean(y_val[j:i])))
+            y.append(int(np.mean(y_val[j:i])))
             p = np.rint(model.predict(np.split(x_val[j:i, :, :], x_val.shape[2], axis=2)))
             pred.append(np.mean(p))
 
         res = classification_report(y, np.rint(pred), output_dict = True )
         print(classification_report(y, np.rint(pred)))
-
+        self.gt = np.append(self.gt, y)
+        self.pred = np.append(self.pred, np.rint(pred))
         acc = accuracy_score(np.rint(y), np.rint(pred))
         self.add_result(res, acc, False )
 
@@ -77,6 +82,27 @@ class Results:
         res_patients_dict =  {'Specificity': self.results_patients[1:,0],'Sensitivity': self.results_patients[1:,1],'Accuracy': self.results_patients[1:,2]  }
         df = pd.DataFrame.from_dict(res_patients_dict)
         df.to_csv(self.filename_patient)
+
+    def write_results(self):
+        '''
+        Called at the end to write the final result files
+        :return:
+        '''
+        res_segments_dict = {'Specificity': self.results_segments[1:,0],'Sensitivity': self.results_segments[1:,1],'Accuracy': self.results_segments[1:,2]  }
+        df = pd.DataFrame.from_dict(res_segments_dict)
+        df.to_csv(self.filename_seg)
+        res_patients_dict =  {'Specificity': self.results_patients[1:,0],'Sensitivity': self.results_patients[1:,1],'Accuracy': self.results_patients[1:,2]  }
+        df = pd.DataFrame.from_dict(res_patients_dict)
+        df.to_csv(self.filename_patient)
+        file_pred = os.path.join(self.dir, 'pred.csv')
+        file_gt = os.path.join(self.dir, 'gt.csv')
+        np.savetxt(file_pred, self.pred, delimiter="," )
+        np.savetxt(file_gt,self.gt, delimiter=",")
+        res = classification_report(self.gt, self.pred)
+        print(res)
+        self.cm = confusion_matrix(self.gt, self.pred)
+        file_conf_matrx = os.path.join(self.dir, 'confusion_matrix.csv')
+        np.savetxt(file_conf_matrx, self.cm, delimiter=",")
 
 
 
@@ -131,15 +157,44 @@ class Results_level:
         for m in range(1, len(count)):
             i = count[m]
             j = count[m - 1]
+            
             score = model.evaluate(np.split(x_val[j:i, :, :], x_val.shape[2], axis=2), y_val[j:i])
             eval.append(score)
-            y_gt = np.argmax(y_val[j:i],1)
-            y_gt , _ = stats.mode(y_gt, axis = None)
-            y.append(y_gt[0])
+
+            # Calculate ground truth mode
+            y_gt = np.argmax(y_val[j:i], axis=1)
+            # print("y_gt before mode:", y_gt, type(y_gt), y_gt.shape if isinstance(y_gt, np.ndarray) else "Scalar")
+            
+            y_gt, _ = stats.mode(y_gt, axis=None)
+            y_gt = np.array(y_gt).flatten()  # Ensure it's a NumPy array
+            y.append(y_gt[0] if y_gt.size > 0 else 0)
+
+            # Predict and calculate mode
             p = np.rint(model.predict(np.split(x_val[j:i, :, :], x_val.shape[2], axis=2)))
-            p = np.argmax(p, 1 )
+            p = np.argmax(p, axis=1)
             p, _ = stats.mode(p, axis=None)
+            p = np.array(p).flatten()  # Ensure it's a NumPy array
             pred.append(p[0])
+        # for m in range(1, len(count)):
+        #     i = count[m]
+        #     j = count[m - 1]
+        #     score = model.evaluate(np.split(x_val[j:i, :, :], x_val.shape[2], axis=2), y_val[j:i])
+        #     eval.append(score)
+        #     y_gt = np.argmax(y_val[j:i],1)
+        #     print("y_gt:", y_gt, type(y_gt), y_gt.shape if isinstance(y_gt, np.ndarray) else "Scalar")
+        #     y_gt , _ = stats.mode(y_gt, axis = None)
+        #     if isinstance(y_gt, np.ndarray):
+        #         y.append(y_gt[0])
+        #     else:
+        #         y.append(y_gt)
+        #     # y_gt = np.argmax(y_val[j:i], 1)
+        #     # print("y_gt:", y_gt, type(y_gt), y_gt.shape if isinstance(y_gt, np.ndarray) else "Scalar")
+        #     # y_gt, _ = stats.mode(y_gt, axis=None)
+        #     # y.append(y_gt[0] if isinstance(y_gt, np.ndarray) else y_gt)
+        #     p = np.rint(model.predict(np.split(x_val[j:i, :, :], x_val.shape[2], axis=2)))
+        #     p = np.argmax(p, 1 )
+        #     p, _ = stats.mode(p, axis=None)
+        #     pred.append(p[0])
 
         res = classification_report(y, np.rint(pred), output_dict = True )
         print(classification_report(y, np.rint(pred)))
