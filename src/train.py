@@ -12,13 +12,18 @@ from src.results import Results,Results_level
 
 from src.algo import multiple_cnn1D, multiple_cnn1D5_level
 from src.data_utils import Data
+from numba import cuda
+print('xoa bo nho')
+cuda.select_device(0)
+cuda.close()
 
-def train( model, datas, lr, log_filename, filename):
+
+def train( model, datas, learning_rate, log_filename, filename):
     """
 
     :param model: Initial untrained model
     :param datas:  data object
-    :param lr: learning rate
+    :param learning_rate: learning rate
     :param log_filename: filename where the training results will be saved ( for each epoch)
     :param filename: file where the weights will be saved
     :return:  trained model
@@ -30,7 +35,7 @@ def train( model, datas, lr, log_filename, filename):
     logger = CSVLogger(log_filename, separator=',', append=True)
     for i in (np.arange(1,4)*5):  # 10-20    1-10
 
-        checkpointer = ModelCheckpoint(filepath=filename , monitor='val_acc', verbose=1, save_best_only=True)
+        checkpointer = ModelCheckpoint(filepath=filename , monitor='val_accuracy', verbose=1, save_best_only=True)
         early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=20, verbose=0, mode='auto')
 
         callbacks_list = [checkpointer, early_stopping, logger]
@@ -40,15 +45,15 @@ def train( model, datas, lr, log_filename, filename):
                             y_train, \
                             verbose=1, \
                             shuffle=True, \
-                            epochs= 200,\
+                            epochs= 300,\
                             batch_size=800, \
                             # validation_data=(X_val, y_val),\
                             validation_data=(np.split(X_val, X_val.shape[2], axis=2), y_val), \
                             callbacks=callbacks_list)
 
         model.load_weights(filename)
-        lr =  lr / 2
-        rms = optimizers.Nadam(lr=lr)
+        learning_rate =  learning_rate / 2
+        rms = optimizers.Nadam(learning_rate=learning_rate)
         model.compile(loss='binary_crossentropy', optimizer=rms, metrics=['accuracy'])
         return model
 
@@ -65,7 +70,7 @@ def ablation_study(args):
                                  "%H_%M"))
     if not os.path.exists(folder):
         os.makedirs(folder)
-    for j in range(1, 9):
+    for j in range(6, 9):
         exp_name = args.exp_name + str(j)
         subfolder = os.path.join(folder, 'feature_' + str(j) )
         file_result_patients = os.path.join(subfolder,'res_pat.csv')
@@ -83,7 +88,7 @@ def ablation_study(args):
         #datas.load(norm=None)
         datas = Data(args.input_data, 1, 100, pk_level=False)
         for i in range(0, 10):
-            lr = 0.001
+            learning_rate = 0.001
             print('fold', str(i))
             log_filename = os.path.join(subfolder, "training_" + str(i) + ".csv")
             w_filename = os.path.join(subfolder, "weights_" + str(i) + ".hdf5")
@@ -93,7 +98,7 @@ def ablation_study(args):
             with open(model_file, "w") as json_file:
                 json_file.write(model_json)
 
-            model = train(model, datas, lr, log_filename, w_filename)
+            model = train(model, datas, learning_rate, log_filename, w_filename)
 
             print('Validation !!!!!!!')
             val_results.validate_patient(model, datas.X_val, datas.y_val, datas.count_val)
@@ -113,24 +118,28 @@ def train_classifier(args):
     model_file = os.path.join(subfolder, "model.json")
     if not os.path.exists(subfolder):
         os.makedirs(subfolder)
-
-    val_results = Results(file_result_segments, file_result_patients)
+   
+    val_results = Results(file_result_segments, file_result_patients,subfolder)
     datas = Data(args.input_data, 1, 100, pk_level= False )
 
     for i in range(0, 10):
-        lr = 0.001
+        learning_rate = 0.001
+        print('model',datas.X_data.shape[2])
         model = multiple_cnn1D(datas.X_data.shape[2])
+
         model_json = model.to_json()
         with open(model_file, "w") as json_file:
             json_file.write(model_json)
 
         print('fold', str(i))
+        
         datas.separate_fold(i)
         log_filename = os.path.join( subfolder ,"training_" + str(i) + ".csv")
         w_filename = os.path.join(subfolder ,"weights_" + str(i) + ".hdf5")
-        model = train(model, datas, lr, log_filename, w_filename)
+        model = train(model, datas, learning_rate, log_filename, w_filename)
         print('Validation !!')
         val_results.validate_patient(model, datas.X_val, datas.y_val, datas.count_val)
+        val_results.write_results()
 
 def train_severity(args):
     '''
@@ -154,7 +163,7 @@ def train_severity(args):
 
     val_results = Results_level(file_result_segments, file_result_patients, subfolder )
     datas = Data(args.input_data, 1, 100)  # modif
-    lr = 0.001
+    learning_rate = 0.001
     for i in range(0,10):
 
         model = multiple_cnn1D5_level(datas.X_data.shape[2])
@@ -165,9 +174,10 @@ def train_severity(args):
         datas.separate_fold(i)
         log_filename = os.path.join(subfolder, "trainig" + str(i) + ".csv")
         w_filename = os.path.join(subfolder ,"weights_" + str(i) + ".hdf5")
-        model = train(model, datas, lr, log_filename,  w_filename )
+        model = train(model, datas, learning_rate, log_filename,  w_filename )
         print('Validation !!')
         val_results.validate_patient(model, datas.X_val, datas.y_val, datas.count_val)
+        val_results.write_results()
 
 
 if __name__ == '__main__':
